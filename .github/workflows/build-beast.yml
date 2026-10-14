@@ -40,6 +40,17 @@ jobs:
       - name: Set up Android SDK + NDK
         uses: android-actions/setup-android@v4
 
+      - name: Ensure debug keystore (for AGP auto-sign)
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -keystore ~/.android/debug.keystore \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -lh ~/.android/debug.keystore
+
       - name: Build debug APK
         working-directory: beast
         run: ./gradlew :app:assembleDebug --no-daemon
@@ -47,19 +58,31 @@ jobs:
       - name: Sign APK (v1+v2)
         working-directory: beast
         run: |
+          set -x
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "APK not found: $APK"; exit 1; }
           rm -f /tmp/beast.keystore
           keytool -genkeypair -keystore /tmp/beast.keystore -alias beast \
             -keyalg RSA -keysize 2048 -validity 10950 \
             -storepass beast123 -keypass beast123 \
-            -dname "CN=VineOS Beast"
-          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
-          if [ -z "$APKSIGNER" ]; then APKSIGNER=$(find "$ANDROID_HOME" -name apksigner -type f | sort -V | tail -1); fi
+            -dname "CN=VineOS Beast" || { echo "keytool failed"; exit 1; }
+          APKSIGNER=""
+          for root in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk" "/opt/android-sdk"; do
+            for f in "$root"/build-tools/*/apksigner; do
+              [ -f "$f" ] && APKSIGNER="$f" && break 2
+            done
+          done
+          if [ -z "$APKSIGNER" ]; then
+            APKSIGNER=$(find /usr/local /opt "$HOME" -name apksigner -type f 2>/dev/null | head -1)
+          fi
+          [ -n "$APKSIGNER" ] || { echo "apksigner not found"; exit 1; }
+          echo "Using apksigner: $APKSIGNER"
           "$APKSIGNER" sign --ks /tmp/beast.keystore --ks-pass:beast123 \
             --v1-signing-enabled true --v2-signing-enabled true \
-            --out "$APK.signed" "$APK"
+            --out "$APK.signed" "$APK" || { echo "apksigner sign failed"; exit 1; }
           mv "$APK.signed" "$APK"
-          "$APKSIGNER" verify --verbose "$APK" && echo "APK signed OK"
+          "$APKSIGNER" verify --verbose "$APK" || { echo "verify failed"; exit 1; }
+          echo "APK SIGNED OK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
