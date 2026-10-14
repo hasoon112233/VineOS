@@ -55,6 +55,7 @@ jobs:
         working-directory: beast
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           ls -lh "$APK"
