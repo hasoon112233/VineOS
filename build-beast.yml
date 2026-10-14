@@ -26,7 +26,7 @@ jobs:
       - name: Download Beast source tarball
         run: |
           mkdir -p beast
-          curl -fsSL -o /tmp/beast.tar.gz "https://muse.ai/files/1309900792215384/1402856011509616/g50h77w1n7oob5py6r09qsvm/vineos-beast.tar.gz"
+          curl -fsSL -o /tmp/beast.tar.gz "https://muse.ai/files/1309900792215384/1630652178654871/a1gdvypii3cq47oo73v66a72/vineos-beast.tar.gz"
           tar xzf /tmp/beast.tar.gz -C beast --strip-components=1
           ls beast
           chmod +x beast/gradlew
