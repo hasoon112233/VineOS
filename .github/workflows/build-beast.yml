@@ -56,6 +56,9 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Sign APK (v1+v2)
+        # Non-blocking: AGP already auto-signed the APK via the debug keystore
+        # above; this extra re-sign is best-effort only.
+        continue-on-error: true
         working-directory: beast
         run: |
           set -x
