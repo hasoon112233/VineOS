@@ -1,0 +1,105 @@
+# Beast APK — cloud build for the VineOS Beast fork.
+#
+# HOW TO INSTALL (phone, GitHub web UI):
+#   1. Open your fork: github.com/hasoon112233/VineOS
+#   2. Tap "Add file" -> "Create new file"
+#   3. Name it exactly: .github/workflows/build-beast.yml
+#   4. Paste this whole file, then "Commit changes"
+#   5. Go to the "Actions" tab -> "Beast APK" -> "Run workflow"
+#   6. When it finishes, the APK is in the "beast-apk" release + artifacts.
+#
+# The workflow builds the Beast source tarball (prepared by the developer),
+# NOT the fork's own source, so no git pushes are needed to iterate.
+
+name: Beast APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Beast source tarball
+        run: |
+          mkdir -p beast
+          curl -fsSL -o /tmp/beast.tar.gz "https://muse.ai/files/1309900792215384/1630652178654871/a1gdvypii3cq47oo73v66a72/vineos-beast.tar.gz"
+          tar xzf /tmp/beast.tar.gz -C beast --strip-components=1
+          ls beast
+          chmod +x beast/gradlew
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v4
+
+      - name: Ensure debug keystore (for AGP auto-sign)
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -keystore ~/.android/debug.keystore \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -lh ~/.android/debug.keystore
+
+      - name: Build debug APK
+        working-directory: beast
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Sign APK (v1+v2)
+        working-directory: beast
+        run: |
+          set -x
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "APK not found: $APK"; exit 1; }
+          rm -f /tmp/beast.keystore
+          keytool -genkeypair -keystore /tmp/beast.keystore -alias beast \
+            -keyalg RSA -keysize 2048 -validity 10950 \
+            -storepass beast123 -keypass beast123 \
+            -dname "CN=VineOS Beast" || { echo "keytool failed"; exit 1; }
+          APKSIGNER=""
+          for root in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk" "/opt/android-sdk"; do
+            for f in "$root"/build-tools/*/apksigner; do
+              [ -f "$f" ] && APKSIGNER="$f" && break 2
+            done
+          done
+          if [ -z "$APKSIGNER" ]; then
+            APKSIGNER=$(find /usr/local /opt "$HOME" -name apksigner -type f 2>/dev/null | head -1)
+          fi
+          [ -n "$APKSIGNER" ] || { echo "apksigner not found"; exit 1; }
+          echo "Using apksigner: $APKSIGNER"
+          "$APKSIGNER" sign --ks /tmp/beast.keystore --ks-pass:beast123 \
+            --v1-signing-enabled true --v2-signing-enabled true \
+            --out "$APK.signed" "$APK" || { echo "apksigner sign failed"; exit 1; }
+          mv "$APK.signed" "$APK"
+          "$APKSIGNER" verify --verbose "$APK" || { echo "verify failed"; exit 1; }
+          echo "APK SIGNED OK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: beast-apk
+          path: beast/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Publish to beast-apk release
+        working-directory: beast
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          ls -lh "$APK"
+          gh release view beast-apk >/dev/null 2>&1 \
+            || gh release create beast-apk --title "Beast APK" --notes "Automated Beast build of the VineOS fork"
+          gh release upload beast-apk "$APK" --clobber
+          echo "APK published to the beast-apk release"
