@@ -1,0 +1,38 @@
+# Mirror the VineOS ROM to a GitHub release for fast downloads.
+#
+# HOW TO INSTALL (phone, GitHub web UI):
+#   1. Open your fork: github.com/hasoon112233/VineOS
+#   2. Tap "Add file" -> "Create new file"
+#   3. Name it exactly: .github/workflows/mirror-rom.yml
+#   4. Paste this whole file, then "Commit changes"
+#   5. Go to the "Actions" tab -> "Mirror ROM" -> "Run workflow"
+#   6. When it finishes, download vine-rom-7.vrom from the "roms" release
+#      (much faster than the upstream server), then import it in the
+#      VineOS app via ROMs tab -> import button.
+
+name: Mirror ROM
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ROM from upstream
+        run: |
+          curl -fSL -o /tmp/vine-rom-7.vrom "https://vineos.hexadecinull.dpdns.org/roms/vine-rom-7.vrom"
+          echo "2629f712c214f045145c162eb56a293bb4a8e2d9e6a6830c64964e95a6142c51  /tmp/vine-rom-7.vrom" | sha256sum -c
+          ls -lh /tmp/vine-rom-7.vrom
+
+      - name: Publish to roms release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view roms >/dev/null 2>&1 || gh release create roms --title "ROMs" --notes "VineOS ROM images (mirrored for fast download)"
+          gh release upload roms /tmp/vine-rom-7.vrom --clobber
+          echo "ROM published to the roms release"
