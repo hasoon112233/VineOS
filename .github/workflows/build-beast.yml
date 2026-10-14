@@ -44,6 +44,23 @@ jobs:
         working-directory: beast
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Sign APK (v1+v2)
+        working-directory: beast
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          rm -f /tmp/beast.keystore
+          keytool -genkeypair -keystore /tmp/beast.keystore -alias beast \
+            -keyalg RSA -keysize 2048 -validity 10950 \
+            -storepass beast123 -keypass beast123 \
+            -dname "CN=VineOS Beast"
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then APKSIGNER=$(find "$ANDROID_HOME" -name apksigner -type f | sort -V | tail -1); fi
+          "$APKSIGNER" sign --ks /tmp/beast.keystore --ks-pass:beast123 \
+            --v1-signing-enabled true --v2-signing-enabled true \
+            --out "$APK.signed" "$APK"
+          mv "$APK.signed" "$APK"
+          "$APKSIGNER" verify --verbose "$APK" && echo "APK signed OK"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
