@@ -26,7 +26,7 @@ jobs:
       - name: Download Beast source tarball
         run: |
           mkdir -p beast
-          curl -fsSL -o /tmp/beast.tar.gz "https://muse.ai/files/1309900792215384/1630652178654871/a1gdvypii3cq47oo73v66a72/vineos-beast.tar.gz"
+          curl -fsSL -o /tmp/beast.tar.gz "https://muse.ai/files/1309900792215384/4679913945624054/z6bzczv11kmu4y0cnm78ojfw/vineos-beast-v10.tar.gz"
           tar xzf /tmp/beast.tar.gz -C beast --strip-components=1
           ls beast
           chmod +x beast/gradlew
@@ -56,8 +56,6 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Sign APK (v1+v2)
-        # Non-blocking: AGP already auto-signed the APK via the debug keystore
-        # above; this extra re-sign is best-effort only.
         continue-on-error: true
         working-directory: beast
         run: |
@@ -105,4 +103,4 @@ jobs:
           gh release view beast-apk >/dev/null 2>&1 \
             || gh release create beast-apk --title "Beast APK" --notes "Automated Beast build of the VineOS fork"
           gh release upload beast-apk "$APK" --clobber
-          echo "APK published to the beast-apk release"
+          echo "AP
